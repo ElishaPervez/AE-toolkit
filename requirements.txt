@@ -4,6 +4,7 @@
 # CLI Interface
 rich>=13.7.0
 textual>=3.0.0
+questionary>=2.0.0
 
 # YouTube Downloading
 yt-dlp>=2025.01.01
