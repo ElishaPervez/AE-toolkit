@@ -1,0 +1,19 @@
+{
+    "recent_files": [
+        "C:\\Users\\Elisha\\Downloads\\amv-script\\video downloads\\Codex Desktop App is good, but is it that good\uff1f.mp4",
+        "C:\\Users\\Elisha\\Downloads\\amv-script\\video downloads\\Introducing Claude Opus 4.6 (original).wav",
+        "C:\\Users\\Elisha\\Downloads\\amv-script\\audio downloads\\Introducing Claude Opus 4.6 (original).wav",
+        "C:\\Users\\Elisha\\Downloads\\amv-script\\audio downloads\\Introducing Claude Opus 4.6.wav",
+        "C:\\Users\\Elisha\\Downloads\\amv-script\\video downloads\\Introducing Claude Opus 4.6.wav",
+        "C:\\Users\\Asad\\Downloads\\Sauska VS Itachi - 8m10s-8m20s.mp3",
+        "C:\\Users\\Elisha\\Downloads\\Music\\five-nights-at-freddys-full-scream-sound_2 (original).mp3",
+        "C:\\Users\\Elisha\\Downloads\\Music\\five-nights-at-freddys-full-scream-sound_2.mp3"
+    ],
+    "max_recent": 10,
+    "force_cpu": true,
+    "setup_type": "cpu",
+    "enabled": false,
+    "fp16": false,
+    "fp8": false,
+    "batch_size": 1
+}

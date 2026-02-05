@@ -1,0 +1,272 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   AMV Toolkit - Theme Stylesheet
+   A vibrant, modern theme with gradient accents and clean visuals
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Color Palette
+   ───────────────────────────────────────────────────────────────────────────────── */
+$primary: #00d4ff;
+$primary-dark: #0080ff;
+$accent: #bd93f9;
+$accent-dark: #9d6dd9;
+$success: #50fa7b;
+$warning: #ffb86c;
+$error: #ff5555;
+$surface: #1e1e2e;
+$surface-light: #2a2a3e;
+$text: #f8f8f2;
+$text-dim: #6272a4;
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Base App Styling
+   ───────────────────────────────────────────────────────────────────────────────── */
+Screen {
+    background: $surface;
+    color: $text;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Header & Footer
+   ───────────────────────────────────────────────────────────────────────────────── */
+Header {
+    background: $surface-light;
+    color: $primary;
+    text-style: bold;
+}
+
+Footer {
+    background: $surface-light;
+    color: $text-dim;
+}
+
+FooterKey {
+    background: $surface-light;
+    color: $primary;
+}
+
+FooterKey > .footer-key--key {
+    background: $primary-dark;
+    color: $text;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Banner Widget
+   ───────────────────────────────────────────────────────────────────────────────── */
+#banner {
+    height: auto;
+    padding: 1 2;
+    content-align: center middle;
+    text-align: center;
+}
+
+#tagline {
+    text-align: center;
+    color: $text-dim;
+    padding-bottom: 1;
+}
+
+#cwd-display {
+    text-align: center;
+    color: $text-dim;
+    padding-bottom: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Menu Styling (OptionList)
+   ───────────────────────────────────────────────────────────────────────────────── */
+OptionList {
+    background: $surface;
+    border: round $primary-dark;
+    padding: 1 2;
+    margin: 1 4;
+    height: auto;
+    max-height: 16;
+}
+
+OptionList:focus {
+    border: round $primary;
+}
+
+OptionList > .option-list--option-highlighted {
+    background: $primary-dark;
+    color: $text;
+    text-style: bold;
+}
+
+OptionList > .option-list--option-hover {
+    background: $surface-light;
+}
+
+OptionList > .option-list--separator {
+    color: $text-dim;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Buttons
+   ───────────────────────────────────────────────────────────────────────────────── */
+Button {
+    background: $primary-dark;
+    color: $text;
+    border: none;
+    padding: 0 2;
+    margin: 0 1;
+}
+
+Button:hover {
+    background: $primary;
+    color: $surface;
+}
+
+Button:focus {
+    background: $primary;
+    text-style: bold;
+}
+
+Button.-success {
+    background: $success;
+    color: $surface;
+}
+
+Button.-warning {
+    background: $warning;
+    color: $surface;
+}
+
+Button.-error {
+    background: $error;
+    color: $text;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Input Fields
+   ───────────────────────────────────────────────────────────────────────────────── */
+Input {
+    background: $surface-light;
+    border: round $text-dim;
+    padding: 0 1;
+    margin: 1 4;
+}
+
+Input:focus {
+    border: round $primary;
+}
+
+Input.-valid {
+    border: round $success;
+}
+
+Input.-invalid {
+    border: round $error;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Progress Bars
+   ───────────────────────────────────────────────────────────────────────────────── */
+ProgressBar {
+    padding: 1 4;
+}
+
+ProgressBar > .bar--bar {
+    background: $surface-light;
+}
+
+ProgressBar > .bar--complete {
+    background: $primary;
+}
+
+ProgressBar Bar > .bar--indeterminate {
+    background: $accent;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Panels & Containers
+   ───────────────────────────────────────────────────────────────────────────────── */
+.panel {
+    border: round $primary-dark;
+    padding: 1 2;
+    margin: 1 2;
+}
+
+.panel-title {
+    text-style: bold;
+    color: $primary;
+}
+
+.success-panel {
+    border: round $success;
+    background: $surface-light;
+}
+
+.error-panel {
+    border: round $error;
+    background: $surface-light;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Hardware Status
+   ───────────────────────────────────────────────────────────────────────────────── */
+#hw-status {
+    height: 3;
+    content-align: center middle;
+    text-align: center;
+    padding: 0 2;
+}
+
+.hw-badge {
+    background: $accent-dark;
+    color: $text;
+    padding: 0 1;
+    margin: 0 1;
+}
+
+.hw-badge-cpu {
+    background: $warning;
+    color: $surface;
+}
+
+.hw-badge-gpu {
+    background: $success;
+    color: $surface;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   File Browser
+   ───────────────────────────────────────────────────────────────────────────────── */
+DirectoryTree {
+    background: $surface;
+    border: round $primary-dark;
+    margin: 1 4;
+    height: 12;
+}
+
+DirectoryTree:focus {
+    border: round $primary;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Status Labels
+   ───────────────────────────────────────────────────────────────────────────────── */
+.status-success {
+    color: $success;
+}
+
+.status-error {
+    color: $error;
+}
+
+.status-warning {
+    color: $warning;
+}
+
+.status-info {
+    color: $primary;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────
+   Layers
+   ───────────────────────────────────────────────────────────────────────────────── */
+Screen {
+    layers: base overlay;
+}
+

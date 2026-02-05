@@ -1,0 +1,24 @@
+# AMV Toolkit - Core Dependencies (CPU Only)
+# Install with: pip install -r requirements.txt
+
+# CLI Interface
+rich>=13.7.0
+textual>=3.0.0
+
+# YouTube Downloading
+yt-dlp>=2025.01.01
+
+# Audio Processing
+pydub>=0.25.1
+
+# Audio Separation & AI Engine
+audio-separator>=0.40.0
+onnxruntime>=1.17.0
+
+# PyTorch (CPU Only)
+# Note: This line installs the standard torch package. 
+# For the smaller CPU-only build on Windows, use:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
