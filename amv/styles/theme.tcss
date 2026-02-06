@@ -22,7 +22,7 @@ $text-dim: #6272a4;
    Base App Styling
    ───────────────────────────────────────────────────────────────────────────────── */
 Screen {
-    background: $surface;
+    background: #000000;
     color: $text;
 }
 

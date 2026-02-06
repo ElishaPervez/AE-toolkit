@@ -6,10 +6,10 @@
 import os
 import subprocess
 from textual.app import ComposeResult
-from textual.screen import Screen
 from textual.widgets import Footer, Static, DataTable
 from textual.containers import Vertical, Center
 
+from textual.screen import Screen
 from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
 from amv.config import MODELS_DIR, get_output_dirs, ensure_output_dirs
 from amv.hardware import get_hw_info
@@ -21,6 +21,7 @@ class SettingsScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Back"),
         ("q", "go_back", "Back"),
+        ("left", "go_back"),
     ]
     
     def compose(self) -> ComposeResult:

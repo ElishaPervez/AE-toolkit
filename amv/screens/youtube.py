@@ -10,13 +10,14 @@ import subprocess
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
-from textual.screen import Screen
 from textual.widgets import Footer, Static, Input, Button, Label
 from textual.containers import Vertical, Horizontal, Center
 from textual import work
 
+from textual.screen import Screen
 from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
 from amv.config import ensure_output_dirs, SCRIPT_DIR
+from amv.notify import notify_complete
 
 # Setup debug logger to file
 _log_file = os.path.join(SCRIPT_DIR, "amv_debug.log")
@@ -33,6 +34,7 @@ class YouTubeScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Back"),
         ("q", "go_back", "Back"),
+        ("left", "go_back"),
     ]
     
     def __init__(self):
@@ -329,6 +331,7 @@ class YouTubeScreen(Screen):
         self.query_one("#progress-status", Static).update(f"[cyan]{title}[/cyan]")
         self.query_one("#continue-btn").remove_class("hidden")
         self.query_one("#continue-btn", Button).focus()
+        notify_complete(self.app)
     
     def _show_error(self, message: str) -> None:
         """Show error message."""

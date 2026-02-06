@@ -4,12 +4,12 @@
 
 import os
 import json
+import logging
 
 # Paths
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.json")
-LEGACY_CONFIG_FILE = os.path.join(SCRIPT_DIR, ".amv_config")
 
 # Ensure models directory exists
 if not os.path.exists(MODELS_DIR):
@@ -23,22 +23,22 @@ DEFAULT_CONFIG = {
 }
 
 def load_config():
-    """Load configuration from JSON."""
+    """Load configuration from JSON. Creates default config if none exists."""
     if not os.path.exists(CONFIG_FILE):
-        return DEFAULT_CONFIG.copy()
+        config = DEFAULT_CONFIG.copy()
+        save_config(config)
+        return config
     try:
         with open(CONFIG_FILE, 'r') as f:
             return {**DEFAULT_CONFIG, **json.load(f)}
-    except Exception:
+    except (json.JSONDecodeError, OSError) as e:
+        logging.warning(f"Could not load config, using defaults: {e}")
         return DEFAULT_CONFIG.copy()
 
 def save_config(config):
     """Save configuration to JSON."""
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=4)
-    except Exception:
-        pass
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
 
 def get_recent_files():
     """Get list of recent files."""

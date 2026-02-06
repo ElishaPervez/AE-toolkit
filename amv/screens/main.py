@@ -6,22 +6,22 @@
 import os
 import sys
 from textual.app import ComposeResult
-from textual.screen import Screen
 from textual.widgets import Footer, Static
 from textual.containers import Vertical, Center
 
+from textual.screen import Screen
 from amv.widgets.banner import Banner
 from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
 
 
 class MainScreen(Screen):
     """Main menu screen with navigation options."""
-    
+
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("escape", "quit", "Quit"),
     ]
-    
+
     def compose(self) -> ComposeResult:
         # Get the working directory
         original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())

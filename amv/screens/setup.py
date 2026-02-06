@@ -6,11 +6,11 @@
 import sys
 import subprocess
 from textual.app import ComposeResult
-from textual.screen import Screen
 from textual.widgets import Footer, Static, DataTable, Button, Label
 from textual.containers import Vertical, Horizontal, Center
 from textual.worker import get_current_worker
 
+from textual.screen import Screen
 from amv.config import CONFIG_FILE, save_config, load_config
 from amv.hardware import get_torch_status, get_ort_status, get_hw_info
 
@@ -34,6 +34,7 @@ class SetupScreen(Screen):
     BINDINGS = [
         ("escape", "go_back", "Back"),
         ("q", "go_back", "Back"),
+        ("left", "go_back"),
     ]
     
     def __init__(self):
@@ -145,9 +146,9 @@ class SetupScreen(Screen):
         try:
             subprocess.run([cmd, "--version"], capture_output=True, timeout=5)
             return True
-        except:
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             return False
-    
+
     def _check_package(self, package: str) -> bool:
         """Check if a Python package is installed."""
         try:
@@ -156,7 +157,7 @@ class SetupScreen(Screen):
                 capture_output=True, text=True, timeout=10
             )
             return result.returncode == 0
-        except:
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
             return False
     
     def _show_issues(self) -> None:
