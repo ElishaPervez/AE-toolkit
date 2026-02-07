@@ -4,16 +4,16 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import os
-import glob
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static, Label, Button, Input
 from textual.containers import Vertical, Center
 from textual.worker import get_current_worker
 
 from textual.screen import Screen
-from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
-from amv.config import MODELS_DIR, get_recent_files, add_recent_file, ensure_output_dirs
+from amv.widgets.menu import StyledOptionList, create_menu_option
+from amv.config import add_recent_file
 from amv.hardware import get_hw_info, refresh_vram
+from amv.models import get_active_model, get_model_display_name
 from amv.notify import notify_complete
 
 AUDIO_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'mp4', 'mkv', 'avi', 'webm', 'mov'}
@@ -34,14 +34,12 @@ class VocalsScreen(Screen):
         ("left", "go_back"),
     ]
 
-    TARGET_MODEL = "Kim_Vocal_2.onnx"
-
     def __init__(self):
         super().__init__()
         self.selected_file = None
         self.is_processing = False
-        self._path_input_visible = False
         self._scan_timer = None
+        self.active_model = None
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -51,21 +49,14 @@ class VocalsScreen(Screen):
             # Hardware status
             yield Static(id="hw-status")
             yield Static("[dim]Files are saved in the same folder as the original audio.[/dim]", classes="path-info")
-            yield Static("")  # Spacer
 
-            # File selection menu
-            with Center():
-                yield StyledOptionList(id="file-menu")
-
-            # Path input section (hidden initially)
-            with Vertical(id="path-section", classes="hidden"):
+            # Path input section (shown by default)
+            with Vertical(id="path-section"):
                 yield Static("[bold]Enter file path:[/bold]", classes="input-label")
                 yield Input(placeholder="Type a path or filename to search...", id="path-input")
                 yield Static("", id="path-scan-info")
                 with Center():
                     yield StyledOptionList(id="path-suggestions")
-                with Center():
-                    yield Button("Cancel", id="path-cancel-btn")
 
             # Progress section (hidden initially)
             with Vertical(id="progress-section", classes="hidden"):
@@ -82,8 +73,9 @@ class VocalsScreen(Screen):
     def on_mount(self) -> None:
         """Initialize screen."""
         self._show_hw_status_loading()
-        self._populate_file_menu()
-        self.query_one("#file-menu").focus()
+        self.query_one("#path-input", Input).focus()
+        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
+        self._run_scan(original_dir, "")
         self.run_worker(self._load_hw_status, thread=True, exclusive=True)
 
     def _show_hw_status_loading(self) -> None:
@@ -96,116 +88,36 @@ class VocalsScreen(Screen):
     def _update_hw_status(self, hw_info=None) -> None:
         if hw_info is None:
             hw_info = refresh_vram()
+
+        # Auto-select model based on hardware
+        self.active_model = get_active_model(hw_info)
+        model_name = get_model_display_name(self.active_model)
+
         device = hw_info['device_short']
-        vram = f" ({hw_info['vram']})" if hw_info['vram'] else ""
+        vram = f" ({hw_info['vram']})" if hw_info.get('vram') else ""
 
-        if 'CUDA' in device or 'GPU' in device:
+        if hw_info.get("gpu_type") != "cpu":
+            # GPU mode: green badge with model + FP16
+            gpu_device = hw_info.get("device", device)
             badge_style = "bold #50fa7b"
+            fp16_tag = " FP16" if hw_info.get("fp16_capable") else ""
+            self.query_one("#hw-status", Static).update(
+                f"[{badge_style}]{gpu_device}{vram} | {model_name}{fp16_tag}[/{badge_style}]"
+            )
         else:
+            # CPU mode: orange badge
             badge_style = "bold #ffb86c"
+            self.query_one("#hw-status", Static).update(
+                f"[{badge_style}]CPU | {model_name}[/{badge_style}]"
+            )
 
-        self.query_one("#hw-status", Static).update(
-            f"[{badge_style}]{device}{vram}[/{badge_style}]  |  [red]CPU fallback available[/red]"
-        )
-
-    # ─── File Menu ────────────────────────────────────────────────────────────
-
-    def _populate_file_menu(self, deep_scan: bool = False) -> None:
-        menu = self.query_one("#file-menu", StyledOptionList)
-        menu.clear_options()
-
-        options = []
-
-        # Recent files
-        recents = get_recent_files()
-        if recents:
-            options.append(create_separator())
-            for path in recents:
-                if os.path.exists(path):
-                    name = os.path.basename(path)
-                    parent = os.path.basename(os.path.dirname(path))
-                    options.append(create_menu_option(
-                        "⭐", name, f"({parent})", "audio", f"file:{path}"
-                    ))
-
-        # Actions
-        options.append(create_separator())
-
-        if not deep_scan:
-            options.append(create_menu_option("🔍", "Scan for audio files", "Search current directory", "action", "scan"))
-
-        options.append(create_menu_option("📝", "Type or paste a path", "Enter file location", "action", "type_path"))
-        options.append(create_menu_option("📂", "Open models folder", "", "folder", "open_models"))
-        options.append(create_separator())
-        options.append(create_menu_option("⬅️", "Back to Main Menu", "", "back", "back"))
-
-        menu.add_options(options)
-
-        if deep_scan:
-            self._scan_for_files(menu)
-
-    def _scan_for_files(self, menu: StyledOptionList) -> None:
-        extensions = ['wav', 'mp3', 'flac', 'm4a', 'mp4', 'mkv', 'avi', 'webm', 'mov']
-        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
-
-        seen = set(get_recent_files())
-        found = []
-
-        for ext in extensions:
-            pattern = os.path.join(original_dir, '**', f'*.{ext}')
-            for f in glob.glob(pattern, recursive=True):
-                abs_path = os.path.abspath(f)
-                if abs_path in seen:
-                    continue
-
-                f_lower = f.lower()
-                if "[vocals]" in f_lower or "[instrumental]" in f_lower:
-                    continue
-
-                seen.add(abs_path)
-                name = os.path.basename(f)
-                parent = os.path.basename(os.path.dirname(f))
-                found.append(create_menu_option("🎵", name, f"({parent})", "audio", f"file:{abs_path}"))
-
-        if found:
-            for opt in found[:20]:
-                menu.add_option(opt)
+    # ─── File Selection ──────────────────────────────────────────────────────
 
     def on_option_list_option_selected(self, event) -> None:
         option_id = event.option_id
-
         if option_id.startswith("file:"):
             file_path = option_id[5:]
             self._start_separation(file_path)
-        elif option_id == "scan":
-            self._populate_file_menu(deep_scan=True)
-        elif option_id == "type_path":
-            self._show_path_input()
-        elif option_id == "open_models":
-            if os.path.exists(MODELS_DIR):
-                if os.name == 'nt':
-                    os.startfile(MODELS_DIR)
-        elif option_id == "back":
-            self.action_go_back()
-
-    # ─── Path Input ───────────────────────────────────────────────────────────
-
-    def _show_path_input(self) -> None:
-        self._path_input_visible = True
-        self.query_one("#file-menu").add_class("hidden")
-        self.query_one("#path-section").remove_class("hidden")
-        inp = self.query_one("#path-input", Input)
-        inp.value = ""
-        inp.focus()
-        # Initial deep scan of working directory
-        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
-        self._run_scan(original_dir, "")
-
-    def _hide_path_input(self) -> None:
-        self._path_input_visible = False
-        self.query_one("#path-section").add_class("hidden")
-        self.query_one("#file-menu").remove_class("hidden")
-        self.query_one("#file-menu").focus()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "path-input":
@@ -297,7 +209,6 @@ class VocalsScreen(Screen):
         self.selected_file = file_path
         self.is_processing = True
 
-        self.query_one("#file-menu").add_class("hidden")
         self.query_one("#path-section").add_class("hidden")
         self.query_one("#progress-section").remove_class("hidden")
 
@@ -312,19 +223,26 @@ class VocalsScreen(Screen):
     def _separation_worker(self, input_file: str) -> None:
         worker = get_current_worker()
 
+        # Determine device label for progress messages
+        hw_info = get_hw_info()
+        if hw_info.get("gpu_type") != "cpu" and hw_info.get("fp16_capable"):
+            device_label = "Processing on CUDA (FP16)"
+        else:
+            device_label = "Processing on CPU"
+
         def on_progress(stage: str, percent: int, message: str):
             if stage == 'loading':
-                self.app.call_from_thread(self._update_stage, "🎚️ Loading AI Model...", "First run may take ~30s for optimization")
+                self.app.call_from_thread(self._update_stage, "🎚️ Loading AI Model...", "First run may take ~30s for model download")
             elif stage == 'processing':
                 if percent >= 0:
-                    self.app.call_from_thread(self._update_progress, percent, message)
+                    self.app.call_from_thread(self._update_progress, percent, f"{device_label} - {message}")
                 else:
-                    self.app.call_from_thread(self._update_stage, "🎵 Processing Audio...", message)
+                    self.app.call_from_thread(self._update_stage, "🎵 Processing Audio...", device_label)
 
         try:
             from amv.separator import run_separation
 
-            run_separation(input_file, self.TARGET_MODEL, progress_callback=on_progress)
+            run_separation(input_file, self.active_model, progress_callback=on_progress)
 
             add_recent_file(input_file)
             self.app.call_from_thread(self._show_success, "Separation complete!")
@@ -369,24 +287,20 @@ class VocalsScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "continue-btn":
-            self._show_menu()
-        elif event.button.id == "path-cancel-btn":
-            self._hide_path_input()
+            self._show_input()
 
-    def _show_menu(self) -> None:
+    def _show_input(self) -> None:
         self.query_one("#progress-section").add_class("hidden")
         self.query_one("#continue-btn").add_class("hidden")
-        self.query_one("#path-section").add_class("hidden")
-        self.query_one("#file-menu").remove_class("hidden")
-        self._path_input_visible = False
-        self._populate_file_menu()
-        self.query_one("#file-menu").focus()
+        self.query_one("#path-section").remove_class("hidden")
+        inp = self.query_one("#path-input", Input)
+        inp.value = ""
+        inp.focus()
+        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
+        self._run_scan(original_dir, "")
 
     def action_go_back(self) -> None:
         if self.is_processing:
-            return
-        if self._path_input_visible:
-            self._hide_path_input()
             return
         self.app.pop_screen()
 

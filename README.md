@@ -1,34 +1,43 @@
-# 🎬 AMV Toolkit (CPU Only)
+# AMV Toolkit
 
-**Audio & Media Video Toolkit** - A unified CLI for YouTube downloading and AI-powered audio separation, built for CPU-only environments.
+**Audio & Media Video Toolkit** - A TUI app for YouTube downloading, AI-powered vocal separation, and audio conversion. Supports both CPU and NVIDIA GPU acceleration.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## ✨ Features
+## Features
 
-- 📺 **Download from YouTube** - Videos (MP4) or Audio (WAV)
-- 🎚️ **Extract Vocals** - AI-powered vocal/instrumental separation
-- 🧠 **CPU-Only Pipeline** - Stable FP32 inference without GPU dependencies
+- **Download from YouTube** - Videos (MP4) or Audio (WAV) via yt-dlp
+- **Extract Vocals** - AI-powered vocal/instrumental separation
+- **Convert to WAV** - Re-encode any media file (video or audio) to PCM WAV via ffmpeg
+- **GPU + CPU Support** - Auto-detects NVIDIA GPUs, easy one-click switching between GPU and CPU dependencies
 
-## 🚀 Quick Start (CPU Only)
+## Hardware Support
+
+| Mode | Device | Model | Notes |
+|------|--------|-------|-------|
+| **GPU** | NVIDIA (CUDA) | BS-Roformer (Best Quality) FP16 | Requires CUDA 12.8+ for RTX 50 series |
+| **CPU** | Any | Kim Vocal 2 (ONNX) FP32 | No GPU required |
+
+The app auto-detects your hardware on launch. You can switch between CPU and GPU modes from the Settings screen, which handles installing/uninstalling the correct dependencies.
+
+## Quick Start
 
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/ElishaPervez/amv-script.git
-cd amv-script
+git clone https://github.com/ElishaPervez/AE-toolkit.git
+cd AE-toolkit
 pip install -r requirements.txt
 ```
 
-### 2. System Setup (CPU Only)
+### 2. Setup
 
 ```bash
-python main.py setup
+python main.py
 ```
 
-> [!IMPORTANT]
-> This project runs in CPU-only mode; no CUDA setup is required.
+Navigate to **Settings > Setup** to install dependencies for your hardware (CPU or GPU).
 
 ### 3. Launch
 
@@ -36,37 +45,8 @@ python main.py setup
 python main.py
 ```
 
-## 📁 Project Structure
+## Requirements
 
-```
-amv-script/
-├── main.py              # Entry point
-├── requirements.txt     # Python dependencies
-├── amv.bat              # Windows launcher
-├── amv/                 # Core Package
-│   ├── infrastructure/  # Hardware detection & Setup
-│   ├── features/        # YouTube & Separation logic
-│   └── ui/             # TUI components
-└── models/              # AI models (User Provided)
-```
-
-## 🎵 Supported Models
-
-Place your models in the `models/` folder.
-
-| Model | Type | Architecture Mode |
-|-------|------|-------------------|
-| **Kim Vocal 2** | ONNX | **CPU** (FP32/Single) |
-
-## ⚡ Hardware Support
-
-This project runs in **CPU-only** mode. GPU acceleration paths have been removed.
-
-## 📋 Commands
-
-```bash
-python main.py              # Interactive menu
-python main.py download     # YouTube menu
-python main.py vocals       # Separation menu
-```
-
+- Python 3.10+
+- ffmpeg (for Convert to WAV)
+- NVIDIA GPU + CUDA 12.8+ (optional, for GPU mode)

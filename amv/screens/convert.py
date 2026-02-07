@@ -4,7 +4,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import os
-import glob
 import subprocess
 import shutil
 from textual.app import ComposeResult
@@ -13,15 +12,13 @@ from textual.containers import Vertical, Center
 from textual import work
 
 from textual.screen import Screen
-from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
-from amv.config import get_recent_files, add_recent_file
+from amv.widgets.menu import StyledOptionList, create_menu_option
+from amv.config import add_recent_file
 from amv.notify import notify_complete
 
-# Video-only for the deep scan path input
 VIDEO_EXTENSIONS = {'mp4', 'mkv', 'avi', 'webm', 'mov'}
-
-# All convertible formats for recent files display
-CONVERTIBLE_EXTS = {'.mp4', '.mkv', '.avi', '.webm', '.mov', '.mp3', '.flac', '.m4a', '.ogg', '.aac'}
+AUDIO_EXTENSIONS = {'wav', 'mp3', 'flac', 'm4a', 'ogg', 'aac', 'opus', 'wma'}
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 # Directories to skip during deep scan
 SKIP_DIRS = {
@@ -43,7 +40,6 @@ class ConvertScreen(Screen):
         super().__init__()
         self.selected_file = None
         self.is_converting = False
-        self._path_input_visible = False
         self._scan_timer = None
 
     def compose(self) -> ComposeResult:
@@ -51,21 +47,14 @@ class ConvertScreen(Screen):
             yield Static("[bold #50fa7b]🔄 CONVERT TO WAV[/bold #50fa7b]", id="header", classes="screen-header")
             yield Static("[dim]Extract audio from any media file[/dim]", classes="screen-subtitle")
             yield Static("[dim]Output saved next to original file[/dim]", classes="path-info")
-            yield Static("")  # Spacer
 
-            # File selection menu
-            with Center():
-                yield StyledOptionList(id="file-menu")
-
-            # Path input section (hidden initially)
-            with Vertical(id="path-section", classes="hidden"):
+            # Path input section (shown by default)
+            with Vertical(id="path-section"):
                 yield Static("[bold]Enter file path:[/bold]", classes="input-label")
                 yield Input(placeholder="Type a path or filename to search...", id="path-input")
                 yield Static("", id="path-scan-info")
                 with Center():
                     yield StyledOptionList(id="path-suggestions")
-                with Center():
-                    yield Button("Cancel", id="path-cancel-btn")
 
             # Progress section (hidden initially)
             with Vertical(id="progress-section", classes="hidden"):
@@ -79,104 +68,17 @@ class ConvertScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._populate_file_menu()
-        self.query_one("#file-menu").focus()
-
-    # ─── File Menu ────────────────────────────────────────────────────────────
-
-    def _populate_file_menu(self, deep_scan: bool = False) -> None:
-        menu = self.query_one("#file-menu", StyledOptionList)
-        menu.clear_options()
-
-        options = []
-
-        # Recent files (all convertible formats)
-        recents = get_recent_files()
-        if recents:
-            options.append(create_separator())
-            for path in recents:
-                if os.path.exists(path):
-                    ext = os.path.splitext(path)[1].lower()
-                    if ext in CONVERTIBLE_EXTS:
-                        name = os.path.basename(path)
-                        parent = os.path.basename(os.path.dirname(path))
-                        options.append(create_menu_option(
-                            "⭐", name, f"({parent})", "audio", f"file:{path}"
-                        ))
-
-        # Actions
-        options.append(create_separator())
-
-        if not deep_scan:
-            options.append(create_menu_option("🔍", "Scan for media files", "Search current directory", "action", "scan"))
-
-        options.append(create_menu_option("📝", "Type or paste a path", "Enter file location", "action", "type_path"))
-        options.append(create_separator())
-        options.append(create_menu_option("⬅️", "Back to Main Menu", "", "back", "back"))
-
-        menu.add_options(options)
-
-        if deep_scan:
-            self._scan_for_files(menu)
-
-    def _scan_for_files(self, menu: StyledOptionList) -> None:
-        extensions = ['mp4', 'mkv', 'avi', 'webm', 'mov', 'mp3', 'flac', 'm4a', 'ogg', 'aac']
-        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
-
-        seen = set(get_recent_files())
-        found = []
-
-        for ext in extensions:
-            pattern = os.path.join(original_dir, '**', f'*.{ext}')
-            for f in glob.glob(pattern, recursive=True):
-                abs_path = os.path.abspath(f)
-                if abs_path in seen:
-                    continue
-
-                if f.lower().endswith('.wav'):
-                    continue
-
-                seen.add(abs_path)
-                name = os.path.basename(f)
-                parent = os.path.basename(os.path.dirname(f))
-
-                emoji = "🎬" if ext in ['mp4', 'mkv', 'avi', 'webm', 'mov'] else "🎵"
-                found.append(create_menu_option(emoji, name, f"({parent})", "audio", f"file:{abs_path}"))
-
-        if found:
-            for opt in found[:20]:
-                menu.add_option(opt)
-
-    def on_option_list_option_selected(self, event) -> None:
-        option_id = event.option_id
-
-        if option_id.startswith("file:"):
-            file_path = option_id[5:]
-            self._start_conversion(file_path)
-        elif option_id == "scan":
-            self._populate_file_menu(deep_scan=True)
-        elif option_id == "type_path":
-            self._show_path_input()
-        elif option_id == "back":
-            self.action_go_back()
-
-    # ─── Path Input ───────────────────────────────────────────────────────────
-
-    def _show_path_input(self) -> None:
-        self._path_input_visible = True
-        self.query_one("#file-menu").add_class("hidden")
-        self.query_one("#path-section").remove_class("hidden")
-        inp = self.query_one("#path-input", Input)
-        inp.value = ""
-        inp.focus()
+        self.query_one("#path-input", Input).focus()
         original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
         self._run_scan(original_dir, "")
 
-    def _hide_path_input(self) -> None:
-        self._path_input_visible = False
-        self.query_one("#path-section").add_class("hidden")
-        self.query_one("#file-menu").remove_class("hidden")
-        self.query_one("#file-menu").focus()
+    # ─── File Selection ──────────────────────────────────────────────────────
+
+    def on_option_list_option_selected(self, event) -> None:
+        option_id = event.option_id
+        if option_id.startswith("file:"):
+            file_path = option_id[5:]
+            self._start_conversion(file_path)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "path-input":
@@ -227,14 +129,14 @@ class ConvertScreen(Screen):
         self.app.call_from_thread(self._show_scan_results, directory, results)
 
     def _deep_scan(self, directory: str) -> list:
-        """Recursively scan for video files only."""
+        """Recursively scan for all media files (video + audio)."""
         results = []
         try:
             for root, dirs, files in os.walk(directory):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith('.')]
                 for f in files:
                     ext = os.path.splitext(f)[1].lower().lstrip('.')
-                    if ext in VIDEO_EXTENSIONS:
+                    if ext in MEDIA_EXTENSIONS:
                         results.append(os.path.join(root, f))
                         if len(results) >= 200:
                             return results
@@ -245,7 +147,7 @@ class ConvertScreen(Screen):
     def _show_scan_results(self, directory: str, results: list) -> None:
         """Update the suggestion list with scan results."""
         self.query_one("#path-scan-info", Static).update(
-            f"[dim]📁 {directory}  ({len(results)} videos found)[/dim]"
+            f"[dim]📁 {directory}  ({len(results)} files found)[/dim]"
         )
 
         menu = self.query_one("#path-suggestions", StyledOptionList)
@@ -254,7 +156,9 @@ class ConvertScreen(Screen):
         for path in results[:20]:
             name = os.path.basename(path)
             parent = os.path.basename(os.path.dirname(path))
-            menu.add_option(create_menu_option("🎬", name, f"({parent})", "video", f"file:{path}"))
+            ext = os.path.splitext(name)[1].lower().lstrip('.')
+            emoji = "🎬" if ext in VIDEO_EXTENSIONS else "🎵"
+            menu.add_option(create_menu_option(emoji, name, f"({parent})", "media", f"file:{path}"))
 
     # ─── Conversion ───────────────────────────────────────────────────────────
 
@@ -262,7 +166,6 @@ class ConvertScreen(Screen):
         self.selected_file = file_path
         self.is_converting = True
 
-        self.query_one("#file-menu").add_class("hidden")
         self.query_one("#path-section").add_class("hidden")
         self.query_one("#progress-section").remove_class("hidden")
 
@@ -284,8 +187,14 @@ class ConvertScreen(Screen):
     @work(thread=True, exclusive=True)
     def _conversion_worker(self, input_file: str) -> None:
         input_dir = os.path.dirname(input_file)
-        input_stem = os.path.splitext(os.path.basename(input_file))[0]
-        output_file = os.path.join(input_dir, f"{input_stem}.wav")
+        input_name = os.path.basename(input_file)
+        input_stem, input_ext = os.path.splitext(input_name)
+
+        # If already .wav, append _converted to avoid overwriting the source
+        if input_ext.lower() == '.wav':
+            output_file = os.path.join(input_dir, f"{input_stem}_converted.wav")
+        else:
+            output_file = os.path.join(input_dir, f"{input_stem}.wav")
 
         ffmpeg_path = shutil.which("ffmpeg")
         if not ffmpeg_path:
@@ -341,24 +250,20 @@ class ConvertScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "continue-btn":
-            self._show_menu()
-        elif event.button.id == "path-cancel-btn":
-            self._hide_path_input()
+            self._show_input()
 
-    def _show_menu(self) -> None:
+    def _show_input(self) -> None:
         self.query_one("#progress-section").add_class("hidden")
         self.query_one("#continue-btn").add_class("hidden")
-        self.query_one("#path-section").add_class("hidden")
-        self.query_one("#file-menu").remove_class("hidden")
-        self._path_input_visible = False
-        self._populate_file_menu()
-        self.query_one("#file-menu").focus()
+        self.query_one("#path-section").remove_class("hidden")
+        inp = self.query_one("#path-input", Input)
+        inp.value = ""
+        inp.focus()
+        original_dir = os.environ.get('AMV_ORIGINAL_DIR', os.getcwd())
+        self._run_scan(original_dir, "")
 
     def action_go_back(self) -> None:
         if self.is_converting:
-            return
-        if self._path_input_visible:
-            self._hide_path_input()
             return
         self.app.pop_screen()
 

@@ -19,7 +19,8 @@ if not os.path.exists(MODELS_DIR):
 DEFAULT_CONFIG = {
     "recent_files": [],
     "max_recent": 10,
-    "force_cpu": False
+    "force_cpu": False,
+    "setup_type": "cpu"
 }
 
 def load_config():
@@ -81,5 +82,6 @@ def ensure_output_dirs():
 
 # Known AI models for display names
 KNOWN_MODELS = {
-    "Kim_Vocal_2.onnx": "Kim Vocal 2 (Anime/High Pitch - Improved)"
+    "Kim_Vocal_2.onnx": "Kim Vocal 2 (Anime/High Pitch - Improved)",
+    "model_bs_roformer_ep_317_sdr_12.9755.ckpt": "BS-Roformer (Best Quality)"
 }

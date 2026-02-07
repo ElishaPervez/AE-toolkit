@@ -10,7 +10,8 @@ import logging
 from typing import Callable, Optional
 
 from .config import MODELS_DIR, ensure_output_dirs, add_recent_file
-from .models import get_model_settings
+from .models import get_model_settings, get_active_model
+from .hardware import get_hw_info
 
 
 class TqdmCapture(io.StringIO):
@@ -49,7 +50,7 @@ class TqdmCapture(io.StringIO):
 
 def run_separation(
     input_file: str,
-    model_name: str,
+    model_name: str = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> bool:
     """
@@ -57,13 +58,19 @@ def run_separation(
 
     Args:
         input_file: Path to input audio file
-        model_name: Name of the separation model to use
+        model_name: Name of the separation model to use (auto-detected if None)
         progress_callback: Optional callback(stage, percent, message) for progress updates
                           stage: 'loading', 'processing', 'finalizing'
                           percent: 0-100 or -1 for indeterminate
                           message: Status message
     """
     from audio_separator.separator import Separator
+
+    # Detect hardware and auto-select model
+    hw = get_hw_info()
+    if model_name is None:
+        model_name = get_active_model(hw)
+    model_settings = get_model_settings(model_name, hw)
 
     input_dir = os.path.dirname(input_file)
     input_filename = os.path.basename(input_file)
@@ -78,9 +85,6 @@ def run_separation(
         PYDUB_OK = True
     except ImportError:
         PYDUB_OK = False
-
-    # Setup params
-    model_settings = get_model_settings(model_name)
 
     temp_input_path = None
     processing_input = input_file
@@ -117,6 +121,10 @@ def run_separation(
         if mdx_params: sep_config["mdx_params"] = mdx_params
         if vr_params: sep_config["vr_params"] = vr_params
 
+        # Enable FP16 autocast for GPU models
+        if model_settings.get("fp16") and hw.get("gpu_type") != "cpu":
+            sep_config["use_autocast"] = True
+
         separator = Separator(**sep_config)
 
         # Notify loading stage
@@ -127,7 +135,8 @@ def run_separation(
 
         # Notify processing stage
         if progress_callback:
-            progress_callback('processing', 0, 'Starting separation...')
+            device_label = "CUDA (FP16)" if hw.get("gpu_type") != "cpu" and hw.get("fp16_capable") and model_settings.get("fp16") else "CPU"
+            progress_callback('processing', 0, f'Processing on {device_label}...')
 
         # Capture tqdm output for progress
         def on_tqdm_progress(percent: int, raw_text: str):
@@ -187,9 +196,24 @@ def run_separation(
         # Add to recents
         add_recent_file(input_file)
 
+        # Cleanup GPU VRAM
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
         return True
 
     except Exception as e:
         if temp_input_path and os.path.exists(temp_input_path):
             os.remove(temp_input_path)
+        # Cleanup GPU VRAM on error too
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
         raise
