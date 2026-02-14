@@ -23,15 +23,42 @@ The app auto-detects your hardware on launch. You can switch between CPU and GPU
 
 ## Quick Start
 
-### 1. Clone & Install
+### 1. Clone
 
 ```bash
 git clone https://github.com/ElishaPervez/AE-toolkit.git
 cd AE-toolkit
+```
+
+### 2. Create and Activate Virtual Environment (Recommended)
+
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Windows (CMD):
+
+```bat
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+```
+
+### 3. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Setup
+Or use the bundled Windows bootstrap script:
+
+```bat
+setup.bat
+```
+
+### 4. Setup
 
 ```bash
 python main.py
@@ -39,7 +66,7 @@ python main.py
 
 Navigate to **Settings > Setup** to install dependencies for your hardware (CPU or GPU).
 
-### 3. Launch
+### 5. Launch
 
 ```bash
 python main.py
