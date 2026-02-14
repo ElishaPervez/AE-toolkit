@@ -48,6 +48,31 @@ class TqdmCapture(io.StringIO):
         super().flush()
 
 
+def _output_ext_from_generated_name(generated_name: str) -> str:
+    """Use the generated stem extension, defaulting to wav when missing."""
+    ext = os.path.splitext(generated_name)[1]
+    return ext if ext else ".wav"
+
+
+def _build_output_name(clean_stem: str, suffix: str, generated_name: str) -> str:
+    """Build a destination name that preserves the generated audio extension."""
+    return f"{clean_stem} {suffix}{_output_ext_from_generated_name(generated_name)}"
+
+
+def _get_unique_path(path: str) -> str:
+    """Return a non-conflicting destination path without deleting existing files."""
+    if not os.path.exists(path):
+        return path
+
+    stem, ext = os.path.splitext(path)
+    index = 1
+    while True:
+        candidate = f"{stem} ({index}){ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        index += 1
+
+
 def run_separation(
     input_file: str,
     model_name: str = None,
@@ -183,10 +208,11 @@ def run_separation(
             suffix = "[instrumental]"
             if "vocal" in f.lower(): suffix = "[vocals]"
 
-            dst_name = f"{clean_stem} {suffix}{input_ext}"
+            dst_name = _build_output_name(clean_stem, suffix, f)
             dst = os.path.join(input_dir, dst_name)
+            dst = _get_unique_path(dst)
+            dst_name = os.path.basename(dst)
 
-            if os.path.exists(dst): os.remove(dst)
             os.rename(src, dst)
             generated_files.append(f"{suffix}: {dst_name}")
 

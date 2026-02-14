@@ -23,6 +23,47 @@ DEFAULT_CONFIG = {
     "setup_type": "cpu"
 }
 
+def _normalize_config(config):
+    """Return a schema-valid config and strip stale keys from older versions."""
+    if not isinstance(config, dict):
+        return DEFAULT_CONFIG.copy()
+
+    normalized = DEFAULT_CONFIG.copy()
+
+    # recent_files: list[str], de-duplicated in order, trimmed by max_recent
+    recent_files = config.get("recent_files", [])
+    if isinstance(recent_files, list):
+        cleaned = []
+        seen = set()
+        for item in recent_files:
+            if not isinstance(item, str):
+                continue
+            item = item.strip()
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            cleaned.append(item)
+        normalized["recent_files"] = cleaned
+
+    max_recent = config.get("max_recent", DEFAULT_CONFIG["max_recent"])
+    if isinstance(max_recent, int):
+        normalized["max_recent"] = max(1, min(50, max_recent))
+
+    normalized["force_cpu"] = bool(config.get("force_cpu", DEFAULT_CONFIG["force_cpu"]))
+
+    setup_type = config.get("setup_type", DEFAULT_CONFIG["setup_type"])
+    if isinstance(setup_type, str) and setup_type.lower() in {"cpu", "gpu"}:
+        normalized["setup_type"] = setup_type.lower()
+
+    # Keep mode flags coherent.
+    if normalized["setup_type"] == "gpu":
+        normalized["force_cpu"] = False
+    elif normalized["force_cpu"]:
+        normalized["setup_type"] = "cpu"
+
+    normalized["recent_files"] = normalized["recent_files"][:normalized["max_recent"]]
+    return normalized
+
 def load_config():
     """Load configuration from JSON. Creates default config if none exists."""
     if not os.path.exists(CONFIG_FILE):
@@ -30,16 +71,23 @@ def load_config():
         save_config(config)
         return config
     try:
-        with open(CONFIG_FILE, 'r') as f:
-            return {**DEFAULT_CONFIG, **json.load(f)}
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        config = _normalize_config(raw)
+
+        # Auto-migrate stale keys/values to the active schema.
+        if config != raw:
+            save_config(config)
+        return config
     except (json.JSONDecodeError, OSError) as e:
         logging.warning(f"Could not load config, using defaults: {e}")
         return DEFAULT_CONFIG.copy()
 
 def save_config(config):
     """Save configuration to JSON."""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
+    normalized = _normalize_config(config)
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(normalized, f, indent=4)
 
 def get_recent_files():
     """Get list of recent files."""
