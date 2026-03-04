@@ -8,7 +8,11 @@ import re
 import shutil
 import subprocess
 import logging
+import sys
+import importlib.util
+from collections import deque
 from datetime import datetime
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static, Input, Button, Label
 from textual.containers import Vertical, Horizontal, Center
@@ -208,15 +212,16 @@ class YouTubeScreen(Screen):
         """Background threaded worker for download."""
         dirs = ensure_output_dirs()
         pct_re = re.compile(r'\[download\]\s+(\d+\.?\d*)%')
+        ytdlp_prefix = [sys.executable, "-m", "yt_dlp"]
 
         if self.download_mode == "audio":
             output_path = dirs["audio"]
-            cmd = ["yt-dlp", "-x", "--audio-format", "wav", "--audio-quality", "0",
+            cmd = ytdlp_prefix + ["-x", "--audio-format", "wav", "--audio-quality", "0",
                    "--newline", "--progress",
                    "-o", os.path.join(output_path, "%(title)s.%(ext)s"), url]
         else:
             output_path = dirs["video"]
-            cmd = ["yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            cmd = ytdlp_prefix + ["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                    "--newline", "--progress",
                    "-o", os.path.join(output_path, "%(title)s.%(ext)s"), url]
 
@@ -225,9 +230,16 @@ class YouTubeScreen(Screen):
         _logger.info(f"  Command: {cmd}")
 
         # Check yt-dlp availability
+        yt_dlp_module = importlib.util.find_spec("yt_dlp")
         yt_dlp_path = shutil.which("yt-dlp")
+        _logger.info(f"  Python executable: {sys.executable}")
+        _logger.info(f"  yt_dlp module available: {bool(yt_dlp_module)}")
         _logger.info(f"  yt-dlp which: {yt_dlp_path}")
         _logger.info(f"  PATH: {os.environ.get('PATH', '(not set)')}")
+
+        if yt_dlp_module is None:
+            self.app.call_from_thread(self._show_error, "yt_dlp module not found. Run setup first.")
+            return
 
         try:
             _logger.info("  Launching subprocess...")
@@ -241,8 +253,53 @@ class YouTubeScreen(Screen):
 
             destination_count = 0
             download_title = ""
+            error_line = ""
+            recent_lines = deque(maxlen=20)
             buf = b""
             line_count = 0
+
+            def handle_line(line: str) -> None:
+                nonlocal destination_count, download_title, error_line, line_count
+                line = line.strip()
+                if not line:
+                    return
+
+                line_count += 1
+                recent_lines.append(line)
+
+                # Log every line from yt-dlp
+                _logger.debug(f"  yt-dlp [{line_count}]: {line}")
+
+                if "error:" in line.lower():
+                    error_line = line
+
+                # Track stream switches via Destination lines
+                if "[download] Destination:" in line:
+                    destination_count += 1
+                    # Extract title from first destination filename
+                    if destination_count == 1:
+                        dest_path = line.split("Destination:", 1)[1].strip()
+                        download_title = os.path.splitext(os.path.basename(dest_path))[0]
+                        # Strip format suffixes like .f137 or .f140
+                        download_title = re.sub(r'\.f\d+$', '', download_title)
+                    _logger.info(f"  Destination #{destination_count}: {line}")
+
+                # Parse percentage
+                match = pct_re.search(line)
+                if match:
+                    pct = float(match.group(1))
+                    if self.download_mode == "video":
+                        if destination_count <= 1:
+                            self.app.call_from_thread(self._set_bar, "video-bar", "Video", pct)
+                        else:
+                            self.app.call_from_thread(self._set_bar, "audio-bar", "Audio", pct)
+                    else:
+                        self.app.call_from_thread(self._set_bar, "audio-bar", "Audio", pct)
+
+                # Show merger/extract status text
+                if "[Merger]" in line or "[ExtractAudio]" in line:
+                    _logger.info(f"  Post-process: {line}")
+                    self.app.call_from_thread(self._update_progress_status, line[:80])
 
             # Read raw bytes and split on both \n and \r for Windows yt-dlp compat
             while True:
@@ -253,42 +310,15 @@ class YouTubeScreen(Screen):
                 if chunk in (b"\n", b"\r"):
                     if not buf:
                         continue
-                    line = buf.decode("utf-8", errors="replace").strip()
+                    line = buf.decode("utf-8", errors="replace")
                     buf = b""
-                    line_count += 1
-
-                    # Log every line from yt-dlp
-                    _logger.debug(f"  yt-dlp [{line_count}]: {line}")
-
-                    # Track stream switches via Destination lines
-                    if "[download] Destination:" in line:
-                        destination_count += 1
-                        # Extract title from first destination filename
-                        if destination_count == 1:
-                            dest_path = line.split("Destination:", 1)[1].strip()
-                            download_title = os.path.splitext(os.path.basename(dest_path))[0]
-                            # Strip format suffixes like .f137 or .f140
-                            download_title = re.sub(r'\.f\d+$', '', download_title)
-                        _logger.info(f"  Destination #{destination_count}: {line}")
-
-                    # Parse percentage
-                    match = pct_re.search(line)
-                    if match:
-                        pct = float(match.group(1))
-                        if self.download_mode == "video":
-                            if destination_count <= 1:
-                                self.app.call_from_thread(self._set_bar, "video-bar", "Video", pct)
-                            else:
-                                self.app.call_from_thread(self._set_bar, "audio-bar", "Audio", pct)
-                        else:
-                            self.app.call_from_thread(self._set_bar, "audio-bar", "Audio", pct)
-
-                    # Show merger/extract status text
-                    if "[Merger]" in line or "[ExtractAudio]" in line:
-                        _logger.info(f"  Post-process: {line}")
-                        self.app.call_from_thread(self._update_progress_status, line[:80])
+                    handle_line(line)
                 else:
                     buf += chunk
+
+            if buf:
+                # Some failures exit without a final newline; keep that line.
+                handle_line(buf.decode("utf-8", errors="replace"))
 
             process.wait()
             _logger.info(f"  Process exited with return code: {process.returncode}")
@@ -311,7 +341,9 @@ class YouTubeScreen(Screen):
                 self.app.call_from_thread(self._show_success, title)
             else:
                 _logger.error(f"  yt-dlp failed with code {process.returncode}")
-                self.app.call_from_thread(self._show_error, "Download failed!")
+                error_msg = self._pick_error_message(error_line, recent_lines, process.returncode)
+                _logger.error(f"  Surface error: {error_msg}")
+                self.app.call_from_thread(self._show_error, error_msg)
 
         except FileNotFoundError as e:
             _logger.error(f"  FileNotFoundError: {e}")
@@ -328,18 +360,34 @@ class YouTubeScreen(Screen):
         """Show success message on completion."""
         self.is_downloading = False
         self.query_one("#progress-label", Label).update("[bold #50fa7b]✅ Download Complete![/bold #50fa7b]")
-        self.query_one("#progress-status", Static).update(f"[cyan]{title}[/cyan]")
+        self.query_one("#progress-status", Static).update(f"[cyan]{escape(title)}[/cyan]")
         self.query_one("#continue-btn").remove_class("hidden")
         self.query_one("#continue-btn", Button).focus()
         notify_complete(self.app)
-    
+
     def _show_error(self, message: str) -> None:
         """Show error message."""
         self.is_downloading = False
         self.query_one("#progress-label", Label).update("[bold #ff5555]❌ Error[/bold #ff5555]")
-        self.query_one("#progress-status", Static).update(f"[red]{message}[/red]")
+        self.query_one("#progress-status", Static).update(f"[red]{escape(message)}[/red]")
         self.query_one("#continue-btn").remove_class("hidden")
         self.query_one("#continue-btn", Button).focus()
+
+    @staticmethod
+    def _pick_error_message(error_line: str, recent_lines: deque[str], returncode: int) -> str:
+        """Pick a user-facing error from yt-dlp output."""
+        if error_line:
+            return error_line
+
+        for line in reversed(recent_lines):
+            if "error:" in line.lower():
+                return line
+
+        for line in reversed(recent_lines):
+            if line and not line.startswith("[download]"):
+                return line
+
+        return f"Download failed (yt-dlp exit code {returncode}, no output captured)"
     
     def action_go_back(self) -> None:
         """Go back to main menu."""

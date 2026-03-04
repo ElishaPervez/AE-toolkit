@@ -49,6 +49,19 @@ def _fmt_cmd(cmd) -> str:
     return cmd
 
 
+def _get_installed_torch_mode() -> tuple[str, str | None, bool]:
+    """Return installed torch mode as ('gpu'|'cpu'|'missing', version, cuda_ready)."""
+    cuda_ready = verify_cuda_torch()
+    torch_avail, torch_ver = get_torch_status()
+
+    # CUDA-ready torch is authoritative for GPU mode, even if status cache is stale.
+    if cuda_ready:
+        return "gpu", torch_ver, True
+    if torch_avail:
+        return "cpu", torch_ver, False
+    return "missing", None, False
+
+
 class SetupScreen(Screen):
     """Setup screen for dependency checking, installation, and mode switching.
 
@@ -98,6 +111,12 @@ class SetupScreen(Screen):
             # Success message (shown if all good)
             yield Static(id="success-msg", classes="hidden")
 
+            # Optional GPU switch hint (shown when CPU setup is complete but GPU available)
+            with Vertical(id="gpu-hint-panel", classes="hidden"):
+                yield Static(id="gpu-hint-msg")
+                with Horizontal(id="gpu-hint-buttons"):
+                    yield Button("Switch to GPU", id="gpu-switch-btn", variant="default")
+
             # Installation progress
             with Vertical(id="install-progress", classes="hidden"):
                 yield Label("Installing...", id="install-label")
@@ -132,6 +151,7 @@ class SetupScreen(Screen):
         self.query_one("#issues-panel").add_class("hidden")
         self.query_one("#action-buttons").add_class("hidden")
         self.query_one("#success-msg").add_class("hidden")
+        self.query_one("#gpu-hint-panel").add_class("hidden")
         self.query_one("#install-progress").add_class("hidden")
         self.is_installing = False
         self.issues = []
@@ -161,13 +181,14 @@ class SetupScreen(Screen):
         else:
             rows.append(("[cyan]Detected GPU[/cyan]", "[red]No NVIDIA GPU found[/red]"))
 
-        config = load_config()
-        current = config.get("setup_type", "cpu")
-        rows.append(("[cyan]Current Mode[/cyan]", f"{current.upper()}"))
+        installed_mode, torch_ver, _ = _get_installed_torch_mode()
+        mode_label = "NOT INSTALLED" if installed_mode == "missing" else installed_mode.upper()
+        rows.append(("[cyan]Current Mode[/cyan]", f"{mode_label}"))
         rows.append(("[cyan]Target Mode[/cyan]", "[bold #50fa7b]GPU (CUDA 12.8 / cu128)[/bold #50fa7b]"))
 
-        cuda_ready = verify_cuda_torch()
-        if cuda_ready and current == "gpu":
+        if installed_mode == "gpu":
+            if torch_ver:
+                rows.append(("[cyan]PyTorch[/cyan]", f"[green]{torch_ver} (CUDA)[/green]"))
             rows.append(("[cyan]CUDA PyTorch[/cyan]", "[green]Already installed[/green]"))
             return {
                 "rows": rows,
@@ -203,12 +224,14 @@ class SetupScreen(Screen):
         installs = []
         rows = []
 
-        config = load_config()
-        current = config.get("setup_type", "cpu")
-        rows.append(("[cyan]Current Mode[/cyan]", f"{current.upper()}"))
+        installed_mode, torch_ver, _ = _get_installed_torch_mode()
+        mode_label = "NOT INSTALLED" if installed_mode == "missing" else installed_mode.upper()
+        rows.append(("[cyan]Current Mode[/cyan]", f"{mode_label}"))
         rows.append(("[cyan]Target Mode[/cyan]", "[bold #ffb86c]CPU[/bold #ffb86c]"))
 
-        if current == "cpu" and not verify_cuda_torch():
+        if installed_mode == "cpu":
+            if torch_ver:
+                rows.append(("[cyan]PyTorch[/cyan]", f"[green]{torch_ver}[/green]"))
             rows.append(("[cyan]CPU PyTorch[/cyan]", "[green]Already installed[/green]"))
             return {
                 "rows": rows,
@@ -218,7 +241,10 @@ class SetupScreen(Screen):
                 "gpu_name": None,
             }
 
-        rows.append(("[cyan]CPU PyTorch[/cyan]", "[yellow]Needs install[/yellow]"))
+        if installed_mode == "missing":
+            rows.append(("[cyan]CPU PyTorch[/cyan]", "[yellow]Needs install (PyTorch missing)[/yellow]"))
+        else:
+            rows.append(("[cyan]CPU PyTorch[/cyan]", "[yellow]Needs install[/yellow]"))
 
         installs = get_cpu_switch_cmds()
         issues = [
@@ -247,9 +273,6 @@ class SetupScreen(Screen):
         rows = []
 
         config = load_config()
-        current_mode = config.get("setup_type", "cpu")
-        setup_target = current_mode.upper()
-        is_gpu_mode = current_mode == "gpu"
         force_cpu = config.get("force_cpu", False)
 
         hw_info = refresh_vram()
@@ -265,23 +288,21 @@ class SetupScreen(Screen):
             rows.append(("[cyan]Detected GPU[/cyan]", f"[green]{gpu_name}[/green]"))
         else:
             rows.append(("[cyan]Detected Hardware[/cyan]", hw_info["device"]))
-        rows.append(("[cyan]Current Mode[/cyan]", f"[bold]{setup_target}[/bold]"))
 
-        torch_avail, torch_ver = get_torch_status()
-        if torch_avail:
-            cuda_ready = verify_cuda_torch()
-            if is_gpu_mode and not cuda_ready:
-                rows.append(("[cyan]PyTorch[/cyan]", f"[yellow]{torch_ver} (CPU-only, needs CUDA)[/yellow]"))
-                issues.append("PyTorch: CPU-only build installed, need CUDA build")
-                installs = get_gpu_switch_cmds()
-            elif not is_gpu_mode and cuda_ready:
-                rows.append(("[cyan]PyTorch[/cyan]", f"[yellow]{torch_ver} (CUDA, but in CPU mode)[/yellow]"))
+        # Check what's actually installed rather than what config says
+        installed_mode, torch_ver, cuda_ready = _get_installed_torch_mode()
+        actual_mode = "gpu" if installed_mode == "gpu" else "cpu"
+        rows.append(("[cyan]Current Mode[/cyan]", f"[bold]{actual_mode.upper()}[/bold]"))
+
+        if installed_mode != "missing":
+            if cuda_ready:
+                rows.append(("[cyan]PyTorch[/cyan]", f"[green]{torch_ver} (CUDA)[/green]"))
             else:
                 rows.append(("[cyan]PyTorch[/cyan]", f"[green]{torch_ver}[/green]"))
         else:
             rows.append(("[cyan]PyTorch[/cyan]", "[red]Missing[/red]"))
             issues.append("PyTorch: Missing")
-            installs.append(get_torch_install_cmd(is_gpu_mode))
+            installs.append(get_torch_install_cmd(False))
 
         ort_avail = self._check_package("onnxruntime")
         if ort_avail:
@@ -304,7 +325,7 @@ class SetupScreen(Screen):
             issues.append("yt-dlp: Missing")
             installs.append([sys.executable, "-m", "pip", "install", "yt-dlp"])
 
-        as_pkg = "audio-separator[gpu]" if is_gpu_mode else "audio-separator"
+        as_pkg = "audio-separator[gpu]" if cuda_ready else "audio-separator"
         if self._check_package("audio-separator"):
             rows.append(("[cyan]audio-separator[/cyan]", "[green]Installed[/green]"))
         else:
@@ -312,12 +333,16 @@ class SetupScreen(Screen):
             issues.append("audio-separator: Missing")
             installs.append([sys.executable, "-m", "pip", "install", as_pkg])
 
+        # Offer optional GPU switch when CPU deps are complete but a GPU exists
+        gpu_switch_available = bool(gpu_name) and not cuda_ready and not issues
+
         return {
             "rows": rows,
             "issues": issues,
             "installs": installs,
-            "success_mode": current_mode if not issues else None,
+            "success_mode": actual_mode if not issues else None,
             "gpu_name": gpu_name,
+            "gpu_switch_available": gpu_switch_available,
             "refresh_hardware": False,
         }
 
@@ -341,11 +366,14 @@ class SetupScreen(Screen):
             table.add_row(component, status)
 
         success_mode = results.get("success_mode")
+        gpu_switch_available = results.get("gpu_switch_available", False)
         if success_mode:
             self._show_success_for_mode(
                 success_mode,
                 refresh_hardware=results.get("refresh_hardware", True),
             )
+            if gpu_switch_available:
+                self._show_gpu_hint()
         elif self.issues:
             self._show_issues()
 
@@ -412,6 +440,14 @@ class SetupScreen(Screen):
             "[dim]Press Escape to return. Restart the app for changes to take effect.[/dim]"
         )
 
+    def _show_gpu_hint(self) -> None:
+        """Show optional GPU switch hint when CPU setup is complete but a GPU is available."""
+        gpu_label = self.gpu_name or "NVIDIA GPU"
+        self.query_one("#gpu-hint-msg", Static).update(
+            f"[dim]{gpu_label} detected — you can optionally switch to GPU mode for better quality[/dim]"
+        )
+        self.query_one("#gpu-hint-panel").remove_class("hidden")
+
     # ─── Installation ─────────────────────────────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -420,6 +456,12 @@ class SetupScreen(Screen):
             self._start_installation()
         elif event.button.id == "back-btn":
             self.action_go_back()
+        elif event.button.id == "gpu-switch-btn":
+            self.target_mode = "gpu"
+            self._show_checking_state(
+                "[dim]Switching to GPU mode (CUDA 12.8 / RTX 50 series)[/dim]"
+            )
+            self.run_worker(self._run_initial_checks, thread=True, exclusive=True)
 
     def _start_installation(self) -> None:
         """Start installing/switching packages."""
@@ -592,6 +634,17 @@ class SetupScreen(Screen):
         padding: 2 4;
         margin: 1 4;
         border: round #0080ff;
+    }
+
+    #gpu-hint-panel {
+        margin: 0 4;
+        padding: 1 2;
+        text-align: center;
+    }
+
+    #gpu-hint-buttons {
+        align: center middle;
+        padding: 1 0;
     }
 
     #install-label {

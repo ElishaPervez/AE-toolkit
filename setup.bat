@@ -14,18 +14,15 @@ if not exist .venv (
 )
 
 echo.
-echo   Installing Dependencies (CPU Optimized)...
-echo   [1/2] Installing base requirements...
+echo   Installing Base Dependencies...
+echo   [1/1] Installing requirements.txt...
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-
-echo.
-echo   [2/2] Installing CPU-optimized PyTorch...
-echo   (This may take a moment but is faster than the GPU version)
-.venv\Scripts\python.exe -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --upgrade
 
 echo.
 echo ═══════════════════════════════════════════════════════════════════════════════
 echo   [SUCCESS] Setup complete!
+echo   Device-specific PyTorch (CPU/GPU) is installed from the app:
+echo   Settings ^> Check dependencies
 echo   You can now run the toolkit using 'amv' or './amv.bat'
 echo ═══════════════════════════════════════════════════════════════════════════════
 echo.

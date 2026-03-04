@@ -12,8 +12,16 @@ from textual.containers import Vertical, Center
 from textual.screen import Screen
 from amv.widgets.menu import StyledOptionList, create_menu_option, create_separator
 from amv.config import MODELS_DIR, get_output_dirs, ensure_output_dirs, load_config
-from amv.hardware import get_hw_info
-from amv.gpu import check_nvidia_gpu
+from amv.hardware import get_hw_info, get_torch_status
+from amv.gpu import check_nvidia_gpu, verify_cuda_torch
+
+
+def get_effective_mode() -> str:
+    """Return effective dependency mode from installed torch state."""
+    torch_avail, _ = get_torch_status()
+    if not torch_avail:
+        return "cpu"
+    return "gpu" if verify_cuda_torch() else "cpu"
 
 
 class SettingsScreen(Screen):
@@ -58,8 +66,7 @@ class SettingsScreen(Screen):
 
         dirs = get_output_dirs()
         hw_info = get_hw_info()
-        config = load_config()
-        current_mode = config.get("setup_type", "cpu").upper()
+        current_mode = get_effective_mode().upper()
 
         table.add_row("[cyan]Output Folder[/cyan]", dirs["base"])
         table.add_row("[cyan]Models Folder[/cyan]", MODELS_DIR)
@@ -72,8 +79,7 @@ class SettingsScreen(Screen):
         menu = self.query_one("#settings-menu", StyledOptionList)
         menu.clear_options()
 
-        config = load_config()
-        current_mode = config.get("setup_type", "cpu")
+        current_mode = get_effective_mode()
         gpu_name = check_nvidia_gpu()
 
         options = [
